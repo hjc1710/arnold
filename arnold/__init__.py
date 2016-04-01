@@ -17,6 +17,7 @@ class Terminator:
         self.fake = getattr(args, 'fake', False)
         self.count = getattr(args, 'count', 0)
         self.folder = getattr(args, 'folder', None)
+        self.migrate_missing = getattr(args, 'migrate_missing', False)
 
         self.prepare_config()
         self.database = self.config.database
@@ -108,6 +109,10 @@ class Terminator:
             self.model.migration.desc()
         ).first()
 
+    def get_run_migrations(self):
+        """Get the full set of migrations already run."""
+        return self.model.select(self.model.migration)
+
     def perform_migrations(self, direction):
         """
         Find the migration if it is passed in and call the up or down method as
@@ -128,7 +133,22 @@ class Terminator:
 
         latest_migration = self.get_latest_migration()
 
-        if latest_migration:
+        if not latest_migration and self.direction == 'down':
+            print("Nothing to go {0}.".format(
+                    colored(self.direction, "magenta"))
+            )
+            return False
+
+        if self.migrate_missing:
+            if self.direction == "down":
+                print("You cannot go {0} with missing migrations!".format(
+                    colored(self.direction, "magenta")
+                ))
+                return False
+            run_migration_names = map(lambda model: model.migration,
+                                      self.get_run_migrations())
+            filenames = set(filenames) - set(run_migration_names)
+        elif latest_migration:
             migration_index = filenames.index(latest_migration.migration)
 
             if migration_index == len(filenames) - 1 and \
@@ -142,18 +162,16 @@ class Terminator:
                 start = migration_index + 1
             else:
                 start = migration_index
-        if not latest_migration and self.direction == 'down':
-            print("Nothing to go {0}.".format(
-                colored(self.direction, "magenta"))
-            )
-            return False
 
         if self.count == 0:
             end = len(filenames)
         else:
             end = start + self.count
 
-        migrations_to_complete = filenames[start:end]
+        if self.migrate_missing:
+            migrations_to_complete = filenames
+        else:
+            migrations_to_complete = filenames[start:end]
 
         if self.count > len(migrations_to_complete):
             print(
@@ -226,6 +244,13 @@ def parse_args(args):
     )
     up_cmd.add_argument(
         '--fake', type=bool, default=False, help='Fake the migration.'
+    )
+
+    up_cmd.add_argument(
+        '--migrate-missing', default=False, dest="migrate_missing",
+        help="Automatically migrate any migrations that were not already run. "
+             "CAN BE DANGEROUS!",
+        action="store_true"
     )
 
     down_cmd = subparsers.add_parser('down', help='Migrate down.')

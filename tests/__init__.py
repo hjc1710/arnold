@@ -39,7 +39,7 @@ class TestMigrationFunctions(unittest.TestCase):
         self.bad_migration = "bad"
         self.missing_migration = "002_missing_migration"
         self.out_of_order_migration = "003_migrate_missing"
-        self.missing_migration_filename = self.missing_migration + '.py'
+        self.ensure_ordering_migration = "004_ensure_ordering_migration"
 
     def tearDown(self):
         self.model.drop_table()
@@ -49,10 +49,15 @@ class TestMigrationFunctions(unittest.TestCase):
         if os.path.exists('./test_config'):
             shutil.rmtree('./test_config')
 
-        missing_migration_path = './arnold_config/migrations/{}'.format(
-            self.missing_migration_filename)
+        missing_migration_path = './arnold_config/migrations/{}.py'.format(
+            self.missing_migration)
         if os.path.exists(missing_migration_path):
             os.unlink(missing_migration_path)
+
+        ordering_migration_path = './arnold_config/migrations/{}.py'.format(
+            self.ensure_ordering_migration)
+        if os.path.exists(ordering_migration_path):
+            os.unlink(ordering_migration_path)
 
     def test_setup_table(self):
         """Ensure that the Migration table will be setup properly"""
@@ -161,8 +166,7 @@ class TestMigrationFunctions(unittest.TestCase):
         _assertions()
 
         # move the migration so we're in a proper missing state
-        shutil.copy('./assets/002_missing_migration.py',
-                    './arnold_config/migrations/')
+        self._copy_asset(self.missing_migration)
         termi = Terminator(args)
         termi.perform_migrations('up')
 
@@ -183,6 +187,9 @@ class TestMigrationFunctions(unittest.TestCase):
 
         self.assertTrue(self._migration_row_exists(self.out_of_order_migration))
         self.assertTrue(self._migration_row_exists(self.missing_migration))
+        # the latest migration should still be the last one via name
+        self.assertEqual(termi.get_latest_migration().migration,
+                         self.out_of_order_migration)
 
     def test_migrate_missing_prevents_down(self):
         """Prevent going down with --migrate-missing."""
@@ -201,6 +208,30 @@ class TestMigrationFunctions(unittest.TestCase):
 
         self.assertTrue(self._migration_row_exists(self.good_migration))
         self.assertTrue(self._migration_row_exists(self.out_of_order_migration))
+
+    def test_migrations_run_in_the_right_order(self):
+        """Ensure migrations always run in the right order."""
+        def _test(migrate_missing=False):
+            """Simple wrapper since the test is the same with or without the
+            flag."""
+            args = ['up', '0']
+            self._copy_asset(self.ensure_ordering_migration)
+
+            if migrate_missing:
+                self._copy_asset(self.missing_migration)
+                args.append('--migrate-missing')
+
+            termi = Terminator(parse_args(args))
+            termi.perform_migrations('up')
+
+            self.assertTrue('outofordermigration' in db.get_tables())
+            self.assertTrue(OutOfOrderMigration.select().first())
+        _test()
+        _test(migrate_missing=True)
+
+    def _copy_asset(self, migration_name):
+        return shutil.copy('./assets/{}.py'.format(migration_name),
+                    './arnold_config/migrations/')
 
     def _migration_row_exists(self, migration_name):
         """Assert a row exists in the migrations table with this name."""

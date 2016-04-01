@@ -86,6 +86,7 @@ Arnold accepts a number of configuration options to the commands.
 
 * --folder - The folder to use for configration/migrations.
 * --fake   - Add the row to the database without running the migration.
+* --migrate-missing - Run every migration that's missing, even if it's out of order. (WARNING: This can lead to data loss in certain situations. See [here](http://arnold.readthedocs.org/en/latest/configuration.html) for more info.)
 
 The `__init__.py` file inside the configuration folder holds the database value. This should be peewee database value. Here is an example `__init__.py` file:
 
