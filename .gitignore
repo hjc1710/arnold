@@ -1,4 +1,5 @@
 *.py[cod]
+.env
 
 # C extensions
 *.so
@@ -38,3 +39,7 @@ nosetests.xml
 *.db
 
 docs/_*
+
+# IntelliJ Metadata
+*.iml
+*.idea
